@@ -33,11 +33,30 @@ class WallpaperViewProvider {
           await vscode.workspace.fs.writeFile(uri, bytes);
           const stored = { mime: msg.image.mime, data: msg.image.data, filename };
           await this.context.globalState.update('vswallpaper.image', stored);
-          // Ask the extension to refresh any tree view
           await vscode.commands.executeCommand('vswallpaper.refresh');
           console.log('VS Wallpaper: stored image from webview', filename);
+          webviewView.webview.postMessage({ type: 'loadImage', image: stored });
         } catch (e) {
           console.error('VS Wallpaper: failed storing image from webview', e);
+        }
+      } else if (msg.type === 'setRemoteImage') {
+        try {
+          const url = msg.url;
+          const bytes = await downloadRemoteBytes(url);
+          const contentType = await resolveMime(url, msg.mime);
+          const ext = (contentType || '').split('/').pop() || 'gif';
+          const filename = `current_wallpaper.${ext}`;
+          const uri = vscode.Uri.joinPath(this.context.globalStorageUri, filename);
+          await vscode.workspace.fs.createDirectory(this.context.globalStorageUri).catch(() => {});
+          await vscode.workspace.fs.writeFile(uri, bytes);
+          const b64 = bytes.toString('base64');
+          const stored = { mime: contentType || 'image/gif', data: b64, filename };
+          await this.context.globalState.update('vswallpaper.image', stored);
+          await vscode.commands.executeCommand('vswallpaper.refresh');
+          console.log('VS Wallpaper: stored remote image from webview', filename);
+          webviewView.webview.postMessage({ type: 'loadImage', image: stored });
+        } catch (e) {
+          console.error('VS Wallpaper: failed storing remote image from webview', e);
         }
       } else if (msg.type === 'clearImage') {
         await this.context.globalState.update('vswallpaper.image', undefined);
@@ -53,69 +72,162 @@ class WallpaperViewProvider {
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; script-src 'nonce-${nonce}'; style-src 'unsafe-inline';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; connect-src https:; script-src 'nonce-${nonce}'; style-src 'unsafe-inline';">
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <style>
   body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: transparent; margin:8px; background-size: cover; background-position: center; }
-  .drop { border: 2px dashed var(--vscode-editorWidget-border); padding:8px; border-radius:6px; text-align:center; background: rgba(0,0,0,0.25); }
-  img { max-width:100%; max-height:240px; display:block; margin:8px auto; box-shadow: 0 0 8px rgba(0,0,0,0.6) }
-  .controls { display:flex; gap:8px; justify-content:center }
+  .drop { border: 2px dashed var(--vscode-editorWidget-border); padding:8px; border-radius:6px; text-align:center; background: rgba(0,0,0,0.25); position:relative; }
+  .drop.dragover { background: rgba(128,128,128,0.08); }
+  img { max-width:100%; max-height:240px; display:block; margin:8px auto; box-shadow: 0 0 8px rgba(0,0,0,0.6); }
+  .controls { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:8px; }
+  .browse-panel { position:absolute; inset:8px; background: rgba(18,18,18,0.95); color: var(--vscode-foreground); border-radius:8px; padding:12px; display:none; overflow:auto; z-index:10; }
+  .browse-panel.visible { display:block; }
+  .browse-toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
+  .browse-toolbar input { flex:1 1 120px; min-width:0; padding:6px 8px; border:1px solid var(--vscode-editorWidget-border); border-radius:4px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); }
+  .browse-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap:8px; margin-top:8px; }
+  .browse-item { border:1px solid var(--vscode-panel-border); border-radius:6px; overflow:hidden; display:flex; flex-direction:column; background: var(--vscode-panel-background); }
+  .browse-item img { width:100%; height:100px; object-fit:cover; }
+  .browse-item button { width:100%; border:none; padding:6px 4px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); cursor:pointer; }
+  .browse-item button:hover { opacity:0.9; }
+  .browse-footer { display:flex; justify-content:space-between; gap:8px; margin-top:8px; flex-wrap:wrap; align-items:center; }
+  .status { margin-top:8px; color: var(--vscode-descriptionForeground); font-size:0.9em; }
 </style>
 </head>
 <body>
   <div id="drop" class="drop">
-    <div id="placeholder">Drag & drop an image/GIF here or click +</div>
+    <div id="placeholder">Drag & drop an image/GIF here or click + or browse GIFs from the internet</div>
     <img id="preview" style="display:none" />
     <div class="controls">
       <button id="pick">+ Add</button>
+      <button id="browse">Browse GIFs</button>
       <button id="clear">Clear</button>
     </div>
     <input id="file" type="file" accept="image/*" style="display:none" />
+
+    <div id="browsePanel" class="browse-panel" role="dialog" aria-label="Browse GIFs from the internet">
+      <div class="browse-toolbar">
+        <input id="searchQuery" placeholder="Search GIFs (e.g. cats, coding)" />
+        <button id="searchButton">Search</button>
+        <button id="trendingButton">Trending</button>
+        <button id="closeBrowse">Close</button>
+      </div>
+      <div id="browser" class="browse-grid"></div>
+      <div id="browseStatus" class="status">Search for GIFs or click Trending.</div>
+    </div>
   </div>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
   const pick = document.getElementById('pick');
+  const browse = document.getElementById('browse');
+  const closeBrowse = document.getElementById('closeBrowse');
+  const searchQuery = document.getElementById('searchQuery');
+  const searchButton = document.getElementById('searchButton');
+  const trendingButton = document.getElementById('trendingButton');
   const file = document.getElementById('file');
   const preview = document.getElementById('preview');
   const placeholder = document.getElementById('placeholder');
   const clear = document.getElementById('clear');
+  const browsePanel = document.getElementById('browsePanel');
+  const browser = document.getElementById('browser');
+  const browseStatus = document.getElementById('browseStatus');
+  const drop = document.getElementById('drop');
+
+  var sampleGifs = [];
 
   function show(img) {
     if (!img) {
-      preview.style.display='none';
-      placeholder.style.display='block';
-      preview.src='';
+      preview.style.display = 'none';
+      placeholder.style.display = 'block';
+      preview.src = '';
       document.body.style.backgroundImage = 'none';
       return;
     }
-    const dataUrl = 'data:' + img.mime + ';base64,' + img.data;
-    // set as background (cover) and also show a preview image
+    var dataUrl = 'data:' + img.mime + ';base64,' + img.data;
     document.body.style.backgroundImage = 'url(' + dataUrl + ')';
     preview.src = dataUrl;
     preview.style.display = 'block';
-    placeholder.style.display='none';
+    placeholder.style.display = 'none';
   }
 
-  window.addEventListener('message', e => { const m = e.data; if (m.type === 'loadImage') show(m.image); });
+  function renderBrowser() {
+    browser.innerHTML = '';
+    if (!sampleGifs.length) {
+      browseStatus.textContent = 'No GIFs found. Try another search or click Trending.';
+      return;
+    }
+    browseStatus.textContent = '';
+    sampleGifs.forEach(function(item) {
+      var card = document.createElement('div');
+      card.className = 'browse-item';
+      var thumb = document.createElement('img');
+      thumb.src = item.preview;
+      thumb.alt = item.name || 'GIF';
+      var btn = document.createElement('button');
+      btn.textContent = 'Use';
+      btn.addEventListener('click', function() { selectGif(item.url, item.name || 'GIF'); });
+      card.appendChild(thumb);
+      card.appendChild(btn);
+      browser.appendChild(card);
+    });
+  }
 
-  pick.onclick = () => file.click();
-  file.onchange = () => { if (file.files.length) read(file.files[0]); file.value=''; };
-  clear.onclick = () => { show(null); vscode.postMessage({ type: 'clearImage' }); };
+  function fetchGifs(endpoint, query) {
+    browseStatus.textContent = 'Loading...';
+    var base = 'https://g.tenor.com/v1/';
+    var url = base + endpoint + '?key=LIVDSRZULELA&limit=12&media_filter=minimal';
+    if (query) url += '&q=' + encodeURIComponent(query);
+    fetch(url)
+      .then(function(response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+      })
+      .then(function(data) {
+        sampleGifs = (data.results || []).map(function(item) {
+          var media = (item.media && item.media[0]) || {};
+          var gifUrl = media.gif && media.gif.url;
+          var previewUrl = media.tinygif && media.tinygif.url || media.nanogif && media.nanogif.url || gifUrl;
+          return { name: item.content_description || item.title || 'GIF', url: gifUrl, preview: previewUrl };
+        }).filter(function(item) { return item.url; });
+        renderBrowser();
+      })
+      .catch(function(err) {
+        console.error(err);
+        browseStatus.textContent = 'Could not load GIF search results. Check your connection.';
+      });
+  }
+
+  function selectGif(url, name) {
+    browseStatus.textContent = 'Saving ' + name + '...';
+    vscode.postMessage({ type: 'setRemoteImage', url: url, name: name });
+  }
+
+  window.addEventListener('message', function(e) { var m = e.data; if (m.type === 'loadImage') show(m.image); });
+
+  pick.onclick = function() { file.click(); };
+  file.onchange = function() { if (file.files.length) { for (var i = 0; i < file.files.length; i++) read(file.files[i]); } file.value = ''; };
+  clear.onclick = function() { show(null); vscode.postMessage({ type: 'clearImage' }); };
+  browse.onclick = function() { browsePanel.classList.add('visible'); fetchGifs('trending'); };
+  closeBrowse.onclick = function() { browsePanel.classList.remove('visible'); browseStatus.textContent = ''; };
+  searchButton.onclick = function() { var q = searchQuery.value.trim(); if (q) fetchGifs('search', q); };
+  trendingButton.onclick = function() { searchQuery.value = ''; fetchGifs('trending'); };
 
   function read(f) {
-    const r = new FileReader();
-    r.onload = () => {
-      const res = r.result; const idx = res.indexOf(','); const header = res.substring(5, idx); const mime = header.split(';')[0]; const b64 = res.substring(idx+1);
-      show({ mime, data: b64 });
-      vscode.postMessage({ type: 'setImage', image: { mime, data: b64 } });
+    var r = new FileReader();
+    r.onload = function() {
+      var res = r.result;
+      var idx = res.indexOf(',');
+      var header = res.substring(5, idx);
+      var mime = header.split(';')[0];
+      var b64 = res.substring(idx + 1);
+      show({ mime: mime, data: b64 });
+      vscode.postMessage({ type: 'setImage', image: { mime: mime, data: b64 } });
     };
     r.readAsDataURL(f);
   }
 
-  const drop = document.getElementById('drop');
-  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
-  drop.addEventListener('dragleave', e => { drop.classList.remove('dragover'); });
-  drop.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) read(f); });
+  drop.addEventListener('dragover', function(e) { e.preventDefault(); drop.classList.add('dragover'); });
+  drop.addEventListener('dragleave', function(e) { e.preventDefault(); drop.classList.remove('dragover'); });
+  drop.addEventListener('drop', function(e) { e.preventDefault(); drop.classList.remove('dragover'); var files = e.dataTransfer.files; if (files && files.length) { for (var i = 0; i < files.length; i++) read(files[i]); } });
 </script>
 </body>
 </html>`;
@@ -273,6 +385,33 @@ function activate(context) {
     if (!stored) { vscode.window.showInformationMessage('No wallpaper stored'); return; }
     createOrShowPanel(context, stored);
   }));
+}
+
+function downloadRemoteBytes(url) {
+  if (typeof fetch === 'function') {
+    return fetch(url).then((res) => {
+      if (!res.ok) throw new Error('Failed to download remote image: ' + res.status);
+      return res.arrayBuffer();
+    }).then((arrayBuffer) => Buffer.from(arrayBuffer));
+  }
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith('https:') ? require('https') : require('http');
+    client.get(url, (res) => {
+      if (res.statusCode !== 200) {
+        reject(new Error('Failed to download remote image: ' + res.statusCode));
+        return;
+      }
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+      res.on('error', reject);
+    }).on('error', reject);
+  });
+}
+
+function resolveMime(url, explicitMime) {
+  if (explicitMime) return explicitMime;
+  return getMime(url) || 'image/gif';
 }
 
 function getMime(path) { const ext = (path||'').split('.').pop().toLowerCase(); switch (ext) { case 'png': return 'image/png'; case 'jpg': case 'jpeg': return 'image/jpeg'; case 'gif': return 'image/gif'; case 'webp': return 'image/webp'; case 'svg': return 'image/svg+xml'; case 'bmp': return 'image/bmp'; default: return 'application/octet-stream'; } }

@@ -3,6 +3,7 @@ VS Wallpaper - VS Code Sidebar Extension (TypeScript, disk storage, gallery)
 This extension provides a sidebar view where you can:
 - Drag and drop images or GIFs into the view (supports multiple)
 - Click the + button to open a file picker and add one or more images
+- Click Browse to search or browse internet GIFs and set one directly as the wallpaper
 - View a gallery of saved images, set an "Active" wallpaper, delete items, or clear all
 
 Storage
