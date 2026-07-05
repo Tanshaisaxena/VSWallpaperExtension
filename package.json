@@ -1,0 +1,32 @@
+{
+  "name": "vswallpaper-extension",
+  "displayName": "VS Wallpaper",
+  "publisher": "Tanshai-Saxena",
+  "version": "0.0.3",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "activationEvents": [
+    "onView:vswallpaper.explorer",
+    "onCommand:vswallpaper.addImage"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "views": {
+      "explorer": [
+        {
+          "type": "webview",
+          "id": "vswallpaper.explorer",
+          "name": "Wallpapers"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "vswallpaper.addImage",
+        "title": "Add Wallpaper..."
+      }
+    ]
+  },
+  "license": "MIT"
+}
