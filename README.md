@@ -1,15 +1,15 @@
-VS Wallpaper - VS Code Sidebar Extension (TypeScript, disk storage, gallery)
+VS Wallpaper - VS Code Explorer Wallpaper Sidebar
 
-This extension provides a sidebar view where you can:
-- Drag and drop images or GIFs into the view (supports multiple)
-- Click the + button to open a file picker and add one or more images
-- Click Browse to search or browse internet GIFs and set one directly as the wallpaper
-- View a gallery of saved images, set an "Active" wallpaper, delete items, or clear all
+This extension provides a sidebar view inside the Explorer where you can:
+- Drag and drop a local image or GIF into the wallpaper panel
+- Use the view header buttons to add a local image, browse internet GIFs, or clear the current wallpaper
+- Click the + Add button in the view header to open a file picker and choose an image/GIF
+- Click Browse GIFs to search trending or keyword-based GIFs and set one as the background
+- Clear the wallpaper to remove the current image and return to the placeholder state
 
 Storage
 - Images are stored on disk inside the extension global storage directory (context.globalStorageUri) as files
-- Metadata (id, filename, mime) is stored in globalState under "vswallpaper.images"
-- Active wallpaper id is stored under "vswallpaper.activeId"
+- The active wallpaper is stored in globalState under "vswallpaper.image"
 
 Build & run (development)
 1. Open this folder in VS Code

@@ -8,7 +8,9 @@
   },
   "activationEvents": [
     "onView:vswallpaper.explorer",
-    "onCommand:vswallpaper.addImage"
+    "onCommand:vswallpaper.addImage",
+    "onCommand:vswallpaper.browseGifs",
+    "onCommand:vswallpaper.clearImage"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -24,9 +26,51 @@
     "commands": [
       {
         "command": "vswallpaper.addImage",
-        "title": "Add Wallpaper..."
+        "title": "+ Add",
+        "category": "VS Wallpaper",
+        "icon": {
+          "light": "./media/add.svg",
+          "dark": "./media/add.svg"
+        }
+      },
+      {
+        "command": "vswallpaper.browseGifs",
+        "title": "Browse GIFs",
+        "category": "VS Wallpaper",
+        "icon": {
+          "light": "./media/browse.svg",
+          "dark": "./media/browse.svg"
+        }
+      },
+      {
+        "command": "vswallpaper.clearImage",
+        "title": "Clear Wallpaper",
+        "category": "VS Wallpaper",
+        "icon": {
+          "light": "./media/clear.svg",
+          "dark": "./media/clear.svg"
+        }
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "vswallpaper.addImage",
+          "when": "view == vswallpaper.explorer",
+          "group": "navigation"
+        },
+        {
+          "command": "vswallpaper.browseGifs",
+          "when": "view == vswallpaper.explorer",
+          "group": "navigation"
+        },
+        {
+          "command": "vswallpaper.clearImage",
+          "when": "view == vswallpaper.explorer",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "license": "MIT"
 }

@@ -20,7 +20,17 @@ class WallpaperViewProvider {
       console.log('VS Wallpaper: resolveWebviewView posting stored image to webview');
       webviewView.webview.postMessage({ type: 'loadImage', image: stored });
     }
-
+ 
+    webviewView.onDidChangeVisibility(() => {
+      if (webviewView.visible) {
+        const visibleStored = this.context.globalState.get('vswallpaper.image');
+        if (visibleStored) {
+          console.log('VS Wallpaper: view became visible, reloading stored image');
+          webviewView.webview.postMessage({ type: 'loadImage', image: visibleStored });
+        }
+      }
+    });
+ 
     webviewView.webview.onDidReceiveMessage(async (msg) => {
       console.log('VS Wallpaper: webview message', msg && msg.type);
       if (msg.type === 'setImage') {
@@ -43,7 +53,7 @@ class WallpaperViewProvider {
         try {
           const url = msg.url;
           const bytes = await downloadRemoteBytes(url);
-          const contentType = await resolveMime(url, msg.mime);
+        const contentType = resolveMime(url, msg.mime);
           const ext = (contentType || '').split('/').pop() || 'gif';
           const filename = `current_wallpaper.${ext}`;
           const uri = vscode.Uri.joinPath(this.context.globalStorageUri, filename);
@@ -75,58 +85,50 @@ class WallpaperViewProvider {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; connect-src https:; script-src 'nonce-${nonce}'; style-src 'unsafe-inline';">
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <style>
-  body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: transparent; margin:8px; background-size: cover; background-position: center; }
-  .drop { border: 2px dashed var(--vscode-editorWidget-border); padding:8px; border-radius:6px; text-align:center; background: rgba(0,0,0,0.25); position:relative; }
-  .drop.dragover { background: rgba(128,128,128,0.08); }
-  img { max-width:100%; max-height:240px; display:block; margin:8px auto; box-shadow: 0 0 8px rgba(0,0,0,0.6); }
-  .controls { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:8px; }
-  .browse-panel { position:absolute; inset:8px; background: rgba(18,18,18,0.95); color: var(--vscode-foreground); border-radius:8px; padding:12px; display:none; overflow:auto; z-index:10; }
+  html, body { height:100%; margin:0; padding:0; }
+  body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: transparent; background-size: cover; background-position: center; }
+  body.hasImage { background-repeat: no-repeat; }
+  .drop { border: 2px dashed var(--vscode-editorWidget-border); padding:16px; border-radius:6px; background: rgba(0,0,0,0.05); position:relative; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; box-sizing:border-box; }
+  .drop.dragover { background: rgba(128,128,128,0.12); }
+  .drop.hasImage { border: none; background: transparent; }
+  .placeholder { color: var(--vscode-descriptionForeground); margin-bottom: 18px; text-align:center; }
+  .controls { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:8px; }
+  .controls button { cursor:pointer; }
+  .browse-panel { position:absolute; top: 8px; left: 8px; right: 8px; bottom: 8px; background: rgba(18,18,18,0.95); color: var(--vscode-foreground); border-radius:8px; padding:12px; display:none; overflow:auto; z-index:10; }
   .browse-panel.visible { display:block; }
   .browse-toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
-  .browse-toolbar input { flex:1 1 120px; min-width:0; padding:6px 8px; border:1px solid var(--vscode-editorWidget-border); border-radius:4px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); }
+  .browse-toolbar input { flex:1 1 160px; min-width:0; padding:6px 8px; border:1px solid var(--vscode-editorWidget-border); border-radius:4px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); }
   .browse-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap:8px; margin-top:8px; }
   .browse-item { border:1px solid var(--vscode-panel-border); border-radius:6px; overflow:hidden; display:flex; flex-direction:column; background: var(--vscode-panel-background); }
   .browse-item img { width:100%; height:100px; object-fit:cover; }
   .browse-item button { width:100%; border:none; padding:6px 4px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); cursor:pointer; }
   .browse-item button:hover { opacity:0.9; }
-  .browse-footer { display:flex; justify-content:space-between; gap:8px; margin-top:8px; flex-wrap:wrap; align-items:center; }
   .status { margin-top:8px; color: var(--vscode-descriptionForeground); font-size:0.9em; }
 </style>
 </head>
 <body>
   <div id="drop" class="drop">
-    <div id="placeholder">Drag & drop an image/GIF here or click + or browse GIFs from the internet</div>
-    <img id="preview" style="display:none" />
-    <div class="controls">
-      <button id="pick">+ Add</button>
-      <button id="browse">Browse GIFs</button>
-      <button id="clear">Clear</button>
-    </div>
-    <input id="file" type="file" accept="image/*" style="display:none" />
+    <div id="placeholder" class="placeholder">Drag & drop an image/GIF here or use the view header buttons to Add, Browse, or Clear.</div>
 
-    <div id="browsePanel" class="browse-panel" role="dialog" aria-label="Browse GIFs from the internet">
-      <div class="browse-toolbar">
-        <input id="searchQuery" placeholder="Search GIFs (e.g. cats, coding)" />
-        <button id="searchButton">Search</button>
-        <button id="trendingButton">Trending</button>
-        <button id="closeBrowse">Close</button>
+      <div id="browsePanel" class="browse-panel" role="dialog" aria-label="Browse GIFs from the internet">
+        <div class="browse-toolbar">
+          <input id="searchQuery" placeholder="Search GIFs (e.g. cats, coding)" />
+          <button id="searchButton">Search</button>
+          <button id="trendingButton">Trending</button>
+          <button id="closeBrowse">Close</button>
+        </div>
+        <div id="browser" class="browse-grid"></div>
+        <div id="browseStatus" class="status">Search for GIFs or click Trending.</div>
       </div>
-      <div id="browser" class="browse-grid"></div>
-      <div id="browseStatus" class="status">Search for GIFs or click Trending.</div>
     </div>
   </div>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
-  const pick = document.getElementById('pick');
-  const browse = document.getElementById('browse');
   const closeBrowse = document.getElementById('closeBrowse');
   const searchQuery = document.getElementById('searchQuery');
   const searchButton = document.getElementById('searchButton');
   const trendingButton = document.getElementById('trendingButton');
-  const file = document.getElementById('file');
-  const preview = document.getElementById('preview');
   const placeholder = document.getElementById('placeholder');
-  const clear = document.getElementById('clear');
   const browsePanel = document.getElementById('browsePanel');
   const browser = document.getElementById('browser');
   const browseStatus = document.getElementById('browseStatus');
@@ -136,16 +138,16 @@ class WallpaperViewProvider {
 
   function show(img) {
     if (!img) {
-      preview.style.display = 'none';
+      document.body.classList.remove('hasImage');
+      drop.classList.remove('hasImage');
       placeholder.style.display = 'block';
-      preview.src = '';
       document.body.style.backgroundImage = 'none';
       return;
     }
     var dataUrl = 'data:' + img.mime + ';base64,' + img.data;
+    document.body.classList.add('hasImage');
+    drop.classList.add('hasImage');
     document.body.style.backgroundImage = 'url(' + dataUrl + ')';
-    preview.src = dataUrl;
-    preview.style.display = 'block';
     placeholder.style.display = 'none';
   }
 
@@ -201,12 +203,8 @@ class WallpaperViewProvider {
     vscode.postMessage({ type: 'setRemoteImage', url: url, name: name });
   }
 
-  window.addEventListener('message', function(e) { var m = e.data; if (m.type === 'loadImage') show(m.image); });
+  window.addEventListener('message', function(e) { var m = e.data; if (m.type === 'loadImage') show(m.image); if (m.type === 'openBrowse') { browsePanel.classList.add('visible'); fetchGifs('trending'); } });
 
-  pick.onclick = function() { file.click(); };
-  file.onchange = function() { if (file.files.length) { for (var i = 0; i < file.files.length; i++) read(file.files[i]); } file.value = ''; };
-  clear.onclick = function() { show(null); vscode.postMessage({ type: 'clearImage' }); };
-  browse.onclick = function() { browsePanel.classList.add('visible'); fetchGifs('trending'); };
   closeBrowse.onclick = function() { browsePanel.classList.remove('visible'); browseStatus.textContent = ''; };
   searchButton.onclick = function() { var q = searchQuery.value.trim(); if (q) fetchGifs('search', q); };
   trendingButton.onclick = function() { searchQuery.value = ''; fetchGifs('trending'); };
@@ -260,7 +258,9 @@ function activate(context) {
   const provider = new WallpaperViewProvider(context);
   // Register the WebviewViewProvider under the Explorer view id
   try {
-    context.subscriptions.push(vscode.window.registerWebviewViewProvider('vswallpaper.explorer', provider));
+    context.subscriptions.push(vscode.window.registerWebviewViewProvider('vswallpaper.explorer', provider, {
+      webviewOptions: { retainContextWhenHidden: true }
+    }));
     console.log('VS Wallpaper: registered webview provider for vswallpaper.explorer');
   } catch (e) {
     console.error('VS Wallpaper: failed to register webview provider', e);
@@ -276,9 +276,19 @@ function activate(context) {
 
   context.subscriptions.push(vscode.commands.registerCommand('vswallpaper.show', async () => {
     // Try to reveal the Explorer view and post stored image if any
-    try {
-      await vscode.commands.executeCommand('workbench.view.explorer');
-    } catch (e) { console.warn('VS Wallpaper: reveal command failed', e && e.message); }
+    const revealCommands = ['workbench.view.extension.vswallpaper', 'workbench.view.extension.vswallpaper.explorer', 'workbench.view.explorer'];
+    for (const cmd of revealCommands) {
+      try {
+        await vscode.commands.executeCommand(cmd);
+        console.log('VS Wallpaper: executed reveal command', cmd);
+        break;
+      } catch (e) {
+        console.warn('VS Wallpaper: reveal command failed', cmd, e && e.message);
+      }
+    }
+    if (provider._view && typeof provider._view.show === 'function') {
+      provider._view.show(true);
+    }
     // small delay then post
     await new Promise(r => setTimeout(r, 300));
     const stored = context.globalState.get('vswallpaper.image');
@@ -323,8 +333,7 @@ function activate(context) {
       await vscode.workspace.fs.writeFile(uri, Buffer.from(b64, 'base64'));
       const stored = { mime, data: b64, filename };
       await context.globalState.update('vswallpaper.image', stored);
-      // Try to reveal the Activity Bar view container so the WebviewView resolves.
-      const revealCommands = ['workbench.view.explorer'];
+      const revealCommands = ['workbench.view.extension.vswallpaper', 'workbench.view.extension.vswallpaper.explorer', 'workbench.view.explorer'];
       for (const cmd of revealCommands) {
         try {
           await vscode.commands.executeCommand(cmd);
@@ -334,11 +343,10 @@ function activate(context) {
           console.warn('VS Wallpaper: reveal command failed', cmd, e && e.message);
         }
       }
-
-      // Trigger refresh hook in case the view is already resolved
+      if (provider._view && typeof provider._view.show === 'function') {
+        provider._view.show(true);
+      }
       try { await vscode.commands.executeCommand('vswallpaper.refresh'); } catch (e) { }
-
-      // Poll for the webview to be available and post the image when it is
       let posted = false;
       for (let i = 0; i < 20; i++) {
         if (provider._view) {
@@ -353,21 +361,46 @@ function activate(context) {
         }
         await new Promise(r => setTimeout(r, 100));
       }
-
       if (!posted) {
         console.warn('VS Wallpaper: webview not resolved after reveal attempts — opening the image in an editor as a fallback.');
         try {
           await vscode.commands.executeCommand('vscode.open', vscode.Uri.joinPath(context.globalStorageUri, filename));
         } catch (e) { console.error('VS Wallpaper: failed to open fallback editor', e); }
       }
-
-      // Also open or show the panel that reliably displays the wallpaper
-      try {
-        createOrShowPanel(context, stored);
-      } catch (e) { console.error('VS Wallpaper: createOrShowPanel error', e); }
-
       console.log('VS Wallpaper: added image', filename);
     } catch (e) { console.error('VS Wallpaper: addImage error', e); vscode.window.showErrorMessage('Failed to add image'); }
+  }));
+
+  context.subscriptions.push(vscode.commands.registerCommand('vswallpaper.browseGifs', async () => {
+    try {
+      const revealCommands = ['workbench.view.extension.vswallpaper', 'workbench.view.extension.vswallpaper.explorer', 'workbench.view.explorer'];
+      for (const cmd of revealCommands) {
+        try {
+          await vscode.commands.executeCommand(cmd);
+          console.log('VS Wallpaper: executed reveal command', cmd);
+          break;
+        } catch (e) {
+          console.warn('VS Wallpaper: reveal command failed', cmd, e && e.message);
+        }
+      }
+      if (provider._view && typeof provider._view.show === 'function') {
+        provider._view.show(true);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      if (provider._view) {
+        provider._view.webview.postMessage({ type: 'openBrowse' });
+      }
+    } catch (e) {
+      console.error('VS Wallpaper: browse command failed', e);
+    }
+  }));
+
+  context.subscriptions.push(vscode.commands.registerCommand('vswallpaper.clearImage', async () => {
+    await context.globalState.update('vswallpaper.image', undefined);
+    if (provider._view) {
+      provider._view.webview.postMessage({ type: 'loadImage', image: undefined });
+    }
+    try { await vscode.commands.executeCommand('vswallpaper.refresh'); } catch (e) { }
   }));
 
   context.subscriptions.push(vscode.commands.registerCommand('vswallpaper.openWallpaper', async () => {
