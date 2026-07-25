@@ -1,0 +1,12 @@
+.vscode/**
+.git/**
+.gitignore
+.vscodeignore
+node_modules/**
+src/**
+out/**
+tsconfig.json
+package-lock.json
+changelog.md
+**/*.map
+**/*.ts

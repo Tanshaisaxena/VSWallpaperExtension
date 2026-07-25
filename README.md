@@ -1,29 +1,32 @@
-VS Wallpaper - VS Code Explorer Wallpaper Sidebar
+# PixelPal
 
-This extension provides a sidebar view inside the Explorer where you can:
-- Drag and drop a local image or GIF into the wallpaper panel
-- Use the view header buttons to add a local image, browse internet GIFs, or clear the current wallpaper
-- Click the + Add button in the view header to open a file picker and choose an image/GIF
-- Click Browse GIFs to search trending or keyword-based GIFs and set one as the background
-- Clear the wallpaper to remove the current image and return to the placeholder state
+PixelPal displays a custom image or GIF in an Explorer sidebar view. It is a visual companion for your workspace; it does not alter VS Code's editor background.
 
-Storage
-- Images are stored on disk inside the extension global storage directory (context.globalStorageUri) as files
-- The active wallpaper is stored in globalState under "vswallpaper.image"
+## Features
 
-Build & run (development)
-1. Open this folder in VS Code
-2. Run `npm install` to install dev dependencies
-3. Run `npm run build` to compile TypeScript to the out/ folder
-4. Press F5 (Run Extension) to launch an Extension Development Host
-5. In the new host window, open the Activity Bar icon named "Wallpaper" and use the view
+- Drag and drop a local image or GIF into the PixelPal view.
+- Use the view header buttons to add, browse, or clear a wallpaper.
+- Search trending or keyword-based GIFs through KLIPY.
+- Keep the selected image across VS Code restarts.
 
-Files of interest
-- src/extension.ts: TypeScript source implementing the WebviewViewProvider, disk storage, and gallery
-- package.json: scripts and build configuration
-- tsconfig.json: TypeScript compiler options
-- media/icon.svg: Activity bar icon
+## GIF search
 
-Notes & improvements
-- Large images are stored as files; consider limiting file size or adding thumbnails generated on disk
-- Could add export/import, multiple galleries, or sync to cloud
+To search GIFs, add your KLIPY app key in Settings under `vswallpaper.klipyAppKey`. KLIPY testing keys have rate limits; request production access from KLIPY if needed.
+
+PixelPal sends GIF-search requests directly to KLIPY only when you open the GIF browser. The selected image or GIF is stored locally in VS Code's extension storage.
+
+## Development
+
+The shipped extension is implemented in `extension.js`. Open this folder in VS Code and press F5 to run it in an Extension Development Host.
+
+Run `npm run check` before packaging or publishing.
+
+## Publishing
+
+1. Create and verify the `PixelPal-Studios` publisher in the Visual Studio Marketplace.
+2. Install the VS Code extension manager: `npm install --global @vscode/vsce`.
+3. Run `vsce package` to inspect the generated VSIX, then `vsce publish` to release it.
+
+## License
+
+MIT. The full license text is included in the extension package.

@@ -78,6 +78,16 @@ class WallpaperViewProvider {
 
   _getHtml(webview) {
     const nonce = getNonce();
+    const config = vscode.workspace.getConfiguration('vswallpaper');
+    const klipyAppKey = config.get('klipyAppKey', '');
+    let klipyCustomerId = config.get('klipyCustomerId', '');
+    if (!klipyCustomerId) {
+      klipyCustomerId = this.context.globalState.get('vswallpaper.klipyCustomerId');
+      if (!klipyCustomerId) {
+        klipyCustomerId = generateCustomerId();
+        this.context.globalState.update('vswallpaper.klipyCustomerId', klipyCustomerId).catch(() => {});
+      }
+    }
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -124,6 +134,8 @@ class WallpaperViewProvider {
   </div>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
+  const klipyAppKey = ${JSON.stringify(klipyAppKey)};
+  const klipyCustomerId = ${JSON.stringify(klipyCustomerId)};
   const closeBrowse = document.getElementById('closeBrowse');
   const searchQuery = document.getElementById('searchQuery');
   const searchButton = document.getElementById('searchButton');
@@ -174,27 +186,53 @@ class WallpaperViewProvider {
   }
 
   function fetchGifs(endpoint, query) {
+    if (!klipyAppKey) {
+      browseStatus.textContent = 'GIF search requires a KLIPY App Key. Set vswallpaper.klipyAppKey in settings.';
+      return;
+    }
+    return fetchKlipyGifs(endpoint, query);
+  }
+
+  function fetchKlipyGifs(endpoint, query) {
     browseStatus.textContent = 'Loading...';
-    var base = 'https://g.tenor.com/v1/';
-    var url = base + endpoint + '?key=LIVDSRZULELA&limit=12&media_filter=minimal';
-    if (query) url += '&q=' + encodeURIComponent(query);
+    var base = 'https://api.klipy.com/api/v1/';
+    var url = base + encodeURIComponent(klipyAppKey) + '/gifs/' + endpoint + '?page=1&per_page=12&customer_id=' + encodeURIComponent(klipyCustomerId) + '&locale=en&content_filter=high&format_filter=';
+    if (endpoint === 'search') {
+      if (!query) {
+        browseStatus.textContent = 'Enter a search term to find GIFs.';
+        return;
+      }
+      url += '&q=' + encodeURIComponent(query);
+    }
     fetch(url)
       .then(function(response) {
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return response.json();
       })
       .then(function(data) {
-        sampleGifs = (data.results || []).map(function(item) {
-          var media = (item.media && item.media[0]) || {};
-          var gifUrl = media.gif && media.gif.url;
-          var previewUrl = media.tinygif && media.tinygif.url || media.nanogif && media.nanogif.url || gifUrl;
-          return { name: item.content_description || item.title || 'GIF', url: gifUrl, preview: previewUrl };
+        var payload = data && data.data ? data.data : data;
+        var items = (payload && payload.data) || [];
+        sampleGifs = items.map(function(item) {
+          var file = item.file || {};
+          var gifUrl = (file.md && file.md.gif && file.md.gif.url)
+            || (file.hd && file.hd.gif && file.hd.gif.url)
+            || (file.sm && file.sm.gif && file.sm.gif.url)
+            || item.url;
+          var previewUrl = (file.sm && file.sm.gif && file.sm.gif.url)
+            || (file.sm && file.sm.webp && file.sm.webp.url)
+            || (file.md && file.md.gif && file.md.gif.url)
+            || gifUrl;
+          return { name: item.title || item.slug || 'GIF', url: gifUrl, preview: previewUrl };
         }).filter(function(item) { return item.url; });
         renderBrowser();
       })
       .catch(function(err) {
         console.error(err);
-        browseStatus.textContent = 'Could not load GIF search results. Check your connection.';
+        if (err && err.message && err.message.indexOf('403') !== -1) {
+          browseStatus.textContent = 'KLIPY GIF search is unavailable. Check your App Key or rate limits.';
+        } else {
+          browseStatus.textContent = 'Could not load GIF search results. Check your connection.';
+        }
       });
   }
 
@@ -447,7 +485,8 @@ function resolveMime(url, explicitMime) {
   return getMime(url) || 'image/gif';
 }
 
-function getMime(path) { const ext = (path||'').split('.').pop().toLowerCase(); switch (ext) { case 'png': return 'image/png'; case 'jpg': case 'jpeg': return 'image/jpeg'; case 'gif': return 'image/gif'; case 'webp': return 'image/webp'; case 'svg': return 'image/svg+xml'; case 'bmp': return 'image/bmp'; default: return 'application/octet-stream'; } }
+function getMime(path) { if (!path) return 'application/octet-stream'; const cleanPath = path.split('?')[0].split('#')[0]; const ext = cleanPath.split('.').pop().toLowerCase(); switch (ext) { case 'png': return 'image/png'; case 'jpg': case 'jpeg': return 'image/jpeg'; case 'gif': return 'image/gif'; case 'webp': return 'image/webp'; case 'svg': return 'image/svg+xml'; case 'bmp': return 'image/bmp'; default: return 'application/octet-stream'; } }
 function getNonce() { let text=''; const possible='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'; for (let i=0;i<16;i++) text+=possible.charAt(Math.floor(Math.random()*possible.length)); return text; }
+function generateCustomerId() { return 'klipy-' + Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36); }
 
 module.exports = { activate };

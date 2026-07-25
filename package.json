@@ -1,10 +1,32 @@
 {
-  "name": "vswallpaper-extension",
-  "displayName": "VS Wallpaper",
-  "publisher": "Tanshai-Saxena",
+  "name": "pixel-pal",
+  "displayName": "PixelPal",
+  "publisher": "PixelPal-Studios",
+  "description": "Display custom images and GIFs directly in the VS Code Explorer sidebar.",
   "version": "0.0.3",
+  "private": false,
   "engines": {
     "vscode": "^1.60.0"
+  },
+  "extensionKind": [
+    "ui"
+  ],
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "gif",
+    "image",
+    "wallpaper",
+    "sidebar",
+    "explorer",
+    "customization"
+  ],
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1f2937",
+    "theme": "dark"
   },
   "activationEvents": [
     "onView:vswallpaper.explorer",
@@ -19,7 +41,7 @@
         {
           "type": "webview",
           "id": "vswallpaper.explorer",
-          "name": "Wallpapers"
+          "name": "PixelPal"
         }
       ]
     },
@@ -27,7 +49,7 @@
       {
         "command": "vswallpaper.addImage",
         "title": "+ Add",
-        "category": "VS Wallpaper",
+        "category": "PixelPal",
         "icon": {
           "light": "./media/add.svg",
           "dark": "./media/add.svg"
@@ -36,7 +58,7 @@
       {
         "command": "vswallpaper.browseGifs",
         "title": "Browse GIFs",
-        "category": "VS Wallpaper",
+        "category": "PixelPal",
         "icon": {
           "light": "./media/browse.svg",
           "dark": "./media/browse.svg"
@@ -45,7 +67,7 @@
       {
         "command": "vswallpaper.clearImage",
         "title": "Clear Wallpaper",
-        "category": "VS Wallpaper",
+        "category": "PixelPal",
         "icon": {
           "light": "./media/clear.svg",
           "dark": "./media/clear.svg"
@@ -70,7 +92,28 @@
           "group": "navigation"
         }
       ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "VS Wallpaper Settings",
+      "properties": {
+        "vswallpaper.klipyAppKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your KLIPY App Key for GIF search and trending GIFs."
+        },
+        "vswallpaper.klipyCustomerId": {
+          "type": "string",
+          "default": "",
+          "description": "Optional KLIPY customer ID. If empty, a stable local customer ID is generated automatically."
+        }
+      }
     }
   },
-  "license": "MIT"
+  "license": "MIT",
+  "qna": false,
+  "scripts": {
+    "check": "node --check extension.js",
+    "vscode:prepublish": "npm run check"
+  }
 }
